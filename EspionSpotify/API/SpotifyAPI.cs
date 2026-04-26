@@ -20,6 +20,7 @@ namespace EspionSpotify.API
         public const string SPOTIFY_API_DEFAULT_REDIRECT_URL = "https://localhost:4002";
         public const string SPOTIFY_API_DASHBOARD_URL = "https://developer.spotify.com/dashboard";
         private readonly AuthorizationCodeAuth _auth;
+        private readonly LocalHttpsCallbackServer _httpsServer;
         private readonly LastFMAPI _lastFmApi;
         private SpotifyWebAPI _api;
         private AuthorizationCodeAuth _authorizationCodeAuth;
@@ -41,8 +42,18 @@ namespace EspionSpotify.API
                 _auth = new AuthorizationCodeAuth(clientId, secretId, redirectUrl, redirectUrl,
                     Scope.Streaming | Scope.PlaylistReadCollaborative | Scope.UserReadCurrentlyPlaying |
                     Scope.UserReadRecentlyPlayed | Scope.UserReadPlaybackState);
-                _auth.AuthReceived += AuthOnAuthReceived;
-                _auth.Start();
+
+                if (redirectUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+                {
+                    _httpsServer = new LocalHttpsCallbackServer(redirectUrl);
+                    _httpsServer.AuthReceived += AuthOnAuthReceived;
+                    _httpsServer.Start();
+                }
+                else
+                {
+                    _auth.AuthReceived += AuthOnAuthReceived;
+                    _auth.Start();
+                }
             }
         }
 
@@ -219,9 +230,16 @@ namespace EspionSpotify.API
 
         private async void AuthOnAuthReceived(object sender, AuthorizationCode payload)
         {
-            _authorizationCodeAuth = (AuthorizationCodeAuth) sender;
-
-            _authorizationCodeAuth.Stop();
+            if (sender is AuthorizationCodeAuth authCodeAuth)
+            {
+                _authorizationCodeAuth = authCodeAuth;
+                _authorizationCodeAuth.Stop();
+            }
+            else
+            {
+                _httpsServer?.Stop();
+                _authorizationCodeAuth = _auth;
+            }
 
             try
             {
@@ -241,9 +259,17 @@ namespace EspionSpotify.API
 
             if (refresh)
             {
-                _auth.Stop();
                 _token = null;
-                _auth.Start();
+                if (_httpsServer != null)
+                {
+                    _httpsServer.Stop();
+                    _httpsServer.Start();
+                }
+                else
+                {
+                    _auth.Stop();
+                    _auth.Start();
+                }
             }
 
             _auth.ShowDialog = true;
@@ -292,8 +318,11 @@ namespace EspionSpotify.API
             if (_disposed) return;
 
             if (disposing)
+            {
                 if (_api != null)
                     _api.Dispose();
+                _httpsServer?.Dispose();
+            }
 
             _disposed = true;
         }
