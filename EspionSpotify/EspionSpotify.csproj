@@ -266,6 +266,7 @@
     <Compile Include="API\IMapperID3.cs" />
     <Compile Include="API\MapperID3.cs" />
     <Compile Include="API\SpotifyAPI.cs" />
+    <Compile Include="API\LocalHttpsCallbackServer.cs" />
     <Compile Include="Models\GitHub\Asset.cs" />
     <Compile Include="Models\GitHub\Release.cs" />
     <Compile Include="Models\GitHub\User.cs" />
