@@ -1,0 +1,76 @@
+name: Build Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Version tag (e.g. v1.12.0)'
+        required: true
+        default: 'v1.12.0'
+
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Determine version
+        id: version
+        shell: pwsh
+        run: |
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            $tag = "${{ github.event.inputs.tag }}"
+          } else {
+            $tag = "${{ github.ref_name }}"
+          }
+          $version = $tag.TrimStart('v')
+          echo "tag=$tag" >> $env:GITHUB_OUTPUT
+          echo "version=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Restore NuGet packages
+        shell: pwsh
+        run: |
+          .\.nuget\nuget.exe restore EspionSpotify.sln
+
+      - name: Build solution (Release)
+        shell: pwsh
+        run: |
+          msbuild EspionSpotify.sln `
+            /p:Configuration=Release `
+            /p:Platform="Any CPU" `
+            /m
+
+      - name: Package release artifact
+        id: package
+        shell: pwsh
+        run: |
+          $tag     = "${{ steps.version.outputs.tag }}"
+          $zipName = "Spytify-$tag.zip"
+          $binDir  = "EspionSpotify\bin\Release"
+
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          [System.IO.Compression.ZipFile]::CreateFromDirectory($binDir, $zipName)
+
+          echo "zip_name=$zipName" >> $env:GITHUB_OUTPUT
+          echo "zip_path=$((Resolve-Path $zipName).Path)" >> $env:GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: Spytify ${{ steps.version.outputs.tag }}
+          draft: false
+          prerelease: false
+          files: ${{ steps.package.outputs.zip_path }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
